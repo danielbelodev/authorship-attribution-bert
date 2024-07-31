@@ -34,9 +34,12 @@ def crawl_sitemap(year, month):
 all_urls = crawl_sitemap(2013, 1)
 
 # Save the URLs and lastmod to a CSV file
-with open("urls.csv", "w", newline='', encoding='utf-8') as file:
-    writer = csv.writer(file)
-    writer.writerow(["URL", "Last Modified"])
-    writer.writerows(all_urls)
+def save_urls_to_csv(file_path):
+    all_urls = crawl_sitemap(2023, 1)
+    with open(file_path, "w", newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerow(["URL", "Last Modified"])
+        writer.writerows(all_urls)
 
-print(f"Total URLs collected: {len(all_urls)}")
+if __name__ == "__main__":
+    save_urls_to_csv("/path/to/your/airflow/dags/urls.csv")
