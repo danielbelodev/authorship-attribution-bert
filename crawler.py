@@ -1,45 +1,42 @@
-import requests
-from bs4 import BeautifulSoup
-import csv
+import requests  # Holt sich Daten von Websites
+from bs4 import BeautifulSoup  # Parst HTML/XML-Daten
+import csv  # Zum Schreiben von CSV-Dateien
 
 def crawl_sitemap(year, month):
-    base_url = "https://www.derstandard.at/sitemaps/sitemap-{}-{:02d}.xml"
-    url = base_url.format(year, month)
-    print(f"Crawling URL: {url}")
+    base_url = "https://www.derstandard.at/sitemaps/sitemap-{}-{:02d}.xml"  # URL-Format der Sitemap
+    url = base_url.format(year, month)  # Ersetze Jahr und Monat
+    print(f"Crawling URL: {url}")  # Zeigt die aktuelle URL an
     
-    response = requests.get(url)
-    if response.status_code != 200:
-        print(f"Failed to retrieve sitemap for {year}-{month:02d}")
-        return []
-    
-    sitemap_content = response.content
-    soup = BeautifulSoup(sitemap_content, 'xml')
-    
-    urls = []
-    for url_tag in soup.find_all('url'):
-        loc = url_tag.find('loc').text
-        lastmod = url_tag.find('lastmod').text
-        urls.append((loc, lastmod))
-    
-    # Move to the next month
-    month += 1
-    if month > 12:
-        month = 1
-        year += 1
+    response = requests.get(url)  # Holt sich die Sitemap
+    if response.status_code != 200:  # Prüft, ob die Anfrage erfolgreich war
+        print(f"Failed to retrieve sitemap for {year}-{month:02d}")  # Gibt Fehler aus, wenn nicht
+        return []  # Beendet die Funktion mit leerer Liste
 
-    # Recursively call the function for the next month
+    sitemap_content = response.content  # Holt den Inhalt der Sitemap
+    soup = BeautifulSoup(sitemap_content, 'xml')  # Parst den XML-Inhalt
+    
+    urls = []  # Liste für gesammelte URLs
+    for url_tag in soup.find_all('url'):  # Geht alle URL-Tags durch
+        loc = url_tag.find('loc').text  # Holt sich die URL
+        lastmod = url_tag.find('lastmod').text  # Holt sich das Datum der letzten Änderung
+        urls.append((loc, lastmod))  # Fügt URL und Datum der Liste hinzu
+    
+    # Gehe zum nächsten Monat
+    month += 1
+    if month > 12:  # Falls Monat größer als 12 ist
+        month = 1  # Setze Monat auf Januar
+        year += 1  # Und erhöhe das Jahr
+
+    # Rekursiver Aufruf für den nächsten Monat
     return urls + crawl_sitemap(year, month)
 
-# Start crawling from January 2023 and store all URLs
-all_urls = crawl_sitemap(2013, 1)
+# Starte mit Januar 2023 und hole alle URLs
+all_urls = crawl_sitemap(2023, 1)
 
-# Save the URLs and lastmod to a CSV file
-def save_urls_to_csv(file_path):
-    all_urls = crawl_sitemap(2023, 1)
-    with open(file_path, "w", newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(["URL", "Last Modified"])
-        writer.writerows(all_urls)
+# Speichere die URLs und das Datum in eine CSV-Datei
+with open("urls.csv", "w", newline='', encoding='utf-8') as file:
+    writer = csv.writer(file)  # CSV-Schreiber erstellen
+    writer.writerow(["URL", "Last Modified"])  # Schreibe die Header-Zeile
+    writer.writerows(all_urls)  # Schreibe alle URLs und Daten
 
-if __name__ == "__main__":
-    save_urls_to_csv("/path/to/your/airflow/dags/urls.csv")
+print(f"Total URLs collected: {len(all_urls)}")  # Zeige die Gesamtanzahl der gesammelten URLs
