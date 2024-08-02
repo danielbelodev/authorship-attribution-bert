@@ -11,7 +11,7 @@ def crawl_sitemap(year, month):
     if response.status_code != 200:
         print(f"Failed to retrieve sitemap for {year}-{month:02d}")
         return []
-    
+
     sitemap_content = response.content
     soup = BeautifulSoup(sitemap_content, 'xml')
     
@@ -31,15 +31,12 @@ def crawl_sitemap(year, month):
     return urls + crawl_sitemap(year, month)
 
 # Start crawling from January 2023 and store all URLs
-all_urls = crawl_sitemap(2013, 1)
+all_urls = crawl_sitemap(2023, 1)
 
 # Save the URLs and lastmod to a CSV file
-def save_urls_to_csv(file_path):
-    all_urls = crawl_sitemap(2023, 1)
-    with open(file_path, "w", newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(["URL", "Last Modified"])
-        writer.writerows(all_urls)
+with open("urls.csv", "w", newline='', encoding='utf-8') as file:
+    writer = csv.writer(file)
+    writer.writerow(["URL", "Last Modified"])
+    writer.writerows(all_urls)
 
-if __name__ == "__main__":
-    save_urls_to_csv("/path/to/your/airflow/dags/urls.csv")
+print(f"Total URLs collected: {len(all_urls)}")
