@@ -2,6 +2,20 @@ import requests  # Holt sich Daten von Websites
 from bs4 import BeautifulSoup  # Parst HTML/XML-Daten
 import csv  # Zum Schreiben von CSV-Dateien
 
+#das Problem hier ist, dass ich nur einen Paragraphen bekomme
+def extract_article_content(url):
+    response = requests.get(url).text
+    article = BeautifulSoup(response, 'html.parser')
+    
+    article_body = article.find("div", {"class": 'article-body'})
+    if article_body is None:
+        print("Dieser Artikel hat keinen Body")
+    
+    paragraphs = article_body.find_all('p')
+    content = [para.get_text() for para in paragraphs]
+    print(f"Anzahl der gefundenen Paragraphen: {len(paragraphs)}")
+    return content
+
 def crawl_sitemap(year, month):
     base_url = "https://www.derstandard.at/sitemaps/sitemap-{}-{:02d}.xml"  # URL-Format der Sitemap
     url = base_url.format(year, month)  # Ersetze Jahr und Monat
@@ -15,11 +29,15 @@ def crawl_sitemap(year, month):
     sitemap_content = response.content  # Holt den Inhalt der Sitemap
     soup = BeautifulSoup(sitemap_content, 'xml')  # Parst den XML-Inhalt
     
-    urls = []  # Liste für gesammelte URLs
-    for url_tag in soup.find_all('url'):  # Geht alle URL-Tags durch
-        loc = url_tag.find('loc').text  # Holt sich die URL
-        lastmod = url_tag.find('lastmod').text  # Holt sich das Datum der letzten Änderung
-        urls.append((loc, lastmod))  # Fügt URL und Datum der Liste hinzu
+    urls = []
+    for url_tag in soup.find_all('url'):
+        loc = url_tag.find('loc').text
+        lastmod = url_tag.find('lastmod').text
+        inhalt = extract_article_content(loc) # 
+
+        #hier muss ich ja den link einneschauen, damit ich den content lesen kann
+
+        urls.append((loc, lastmod))
     
     # Gehe zum nächsten Monat
     month += 1
