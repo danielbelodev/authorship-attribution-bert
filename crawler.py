@@ -2,6 +2,20 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 
+#das Problem hier ist, dass ich nur einen Paragraphen bekomme
+def extract_article_content(url):
+    response = requests.get(url).text
+    article = BeautifulSoup(response, 'html.parser')
+    
+    article_body = article.find("div", {"class": 'article-body'})
+    if article_body is None:
+        print("Dieser Artikel hat keinen Body")
+    
+    paragraphs = article_body.find_all('p')
+    content = [para.get_text() for para in paragraphs]
+    print(f"Anzahl der gefundenen Paragraphen: {len(paragraphs)}")
+    return content
+
 def crawl_sitemap(year, month):
     base_url = "https://www.derstandard.at/sitemaps/sitemap-{}-{:02d}.xml"
     url = base_url.format(year, month)
@@ -19,6 +33,10 @@ def crawl_sitemap(year, month):
     for url_tag in soup.find_all('url'):
         loc = url_tag.find('loc').text
         lastmod = url_tag.find('lastmod').text
+        inhalt = extract_article_content(loc) # 
+
+        #hier muss ich ja den link einneschauen, damit ich den content lesen kann
+
         urls.append((loc, lastmod))
     
     # Move to the next month
