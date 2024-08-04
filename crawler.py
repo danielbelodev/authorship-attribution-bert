@@ -37,7 +37,7 @@ def crawl_sitemap(year, month):
 
         #hier muss ich ja den link einneschauen, damit ich den content lesen kann
 
-        urls.append((loc, lastmod))
+        urls.append((loc, lastmod, inhalt))
     
     # Gehe zum nächsten Monat
     month += 1
