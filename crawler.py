@@ -2,6 +2,7 @@ import requests  # Holt sich Daten von Websites
 from bs4 import BeautifulSoup  # Parst HTML/XML-Daten
 import csv  # Zum Schreiben von CSV-Dateien
 
+"""
 #das Problem hier ist, dass ich nur einen Paragraphen bekomme
 def extract_article_content(url):
     response = requests.get(url).text
@@ -15,7 +16,7 @@ def extract_article_content(url):
     content = [para.get_text() for para in paragraphs]
     print(f"Anzahl der gefundenen Paragraphen: {len(paragraphs)}")
     return content
-
+"""
 def crawl_sitemap(year, month):
     base_url = "https://www.derstandard.at/sitemaps/sitemap-{}-{:02d}.xml"  # URL-Format der Sitemap
     url = base_url.format(year, month)  # Ersetze Jahr und Monat
