@@ -7,6 +7,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import requests
+from bs4 import BeautifulSoup
+
 
 # Funktion zur Extraktion des Artikelinhalts von einer gegebenen URL mit Selenium
 def extract_article_content(url):
@@ -18,7 +21,7 @@ def extract_article_content(url):
 
     try:
         driver.get(url)
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.article-body')))
+        WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.article-body')))
 
         article_content = driver.find_element(By.CSS_SELECTOR, 'div.article-body')
 
@@ -32,7 +35,7 @@ def extract_article_content(url):
             if not paragraphs:
                 return ""
             content = " ".join([para.text.strip() for para in paragraphs])
-        
+
         return content
 
     except Exception as e:
@@ -41,6 +44,7 @@ def extract_article_content(url):
 
     finally:
         driver.quit()
+
 
 def read_seen_urls(file_path):
     seen_urls = set()
@@ -54,6 +58,7 @@ def read_seen_urls(file_path):
     except FileNotFoundError:
         pass
     return seen_urls
+
 
 def crawl_sitemap(start_year, start_month, seen_urls):
     current_date = datetime(start_year, start_month, 1)
@@ -102,7 +107,8 @@ def crawl_sitemap(start_year, start_month, seen_urls):
 
     return collected_data
 
-start_year, start_month = 2024, 1
+
+start_year, start_month = 2024, 8
 seen_urls = read_seen_urls("urls.csv")
 
 start_time = time.time()
