@@ -1,3 +1,4 @@
+"""
 import csv
 from datetime import datetime, timedelta
 import time
@@ -117,3 +118,64 @@ with open("urls.csv", "a", newline='', encoding='utf-8') as file:
     writer.writerows(new_urls)
 
 print(f"Total new URLs collected: {len(new_urls)}")
+
+"""
+import requests
+from bs4 import BeautifulSoup
+import csv
+import time
+import os
+
+# Function to extract the article content
+def extract_article_content(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        article_body = soup.find('div', class_='article-body')
+        if article_body:
+            paragraphs = [p.get_text() for p in article_body.find_all('p')]
+            content = "\n".join(paragraphs)
+            return content
+    return None
+
+# Function to parse the sitemap and extract article URLs and dates
+def parse_sitemap(sitemap_url):
+    response = requests.get(sitemap_url)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'xml')
+        urls_dates = [(loc.get_text(), lastmod.get_text())
+                      for loc, lastmod in zip(soup.find_all('loc'), soup.find_all('lastmod'))]
+        return urls_dates
+    return []
+
+# Function to check if a URL is already in the CSV file
+def is_url_in_csv(url, csv_file):
+    if not os.path.exists(csv_file):
+        return False
+    with open(csv_file, 'r', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row and row[0] == url:
+                return True
+    return False
+
+# Function to crawl articles from the sitemap and save to CSV
+def crawl_articles(sitemap_url, output_file):
+    urls_dates = parse_sitemap(sitemap_url)
+    with open(output_file, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        if os.stat(output_file).st_size == 0:  # Check if the file is empty
+            writer.writerow(['URL', 'Date', 'Content'])  # Write headers if empty
+
+        for url, lastmod in urls_dates:
+            if not is_url_in_csv(url, output_file):  # Skip if URL is already in CSV
+                print(f"Crawling: {url}")
+                content = extract_article_content(url)
+                if content:
+                    writer.writerow([url, lastmod, content])
+
+
+# Usage example
+sitemap_url = "https://www.derstandard.at/sitemaps/sitemap-2024-01.xml"
+output_file = "articles_january_to_august.csv"
+crawl_articles(sitemap_url, output_file)
