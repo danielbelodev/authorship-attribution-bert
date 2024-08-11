@@ -1,157 +1,31 @@
-"""
+import aiohttp
+import asyncio
 import csv
-from datetime import datetime, timedelta
-import time
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import requests
-from bs4 import BeautifulSoup
-
-
-# Funktion zur Extraktion des Artikelinhalts von einer gegebenen URL mit Selenium
-def extract_article_content(url):
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    service = Service('C:/Users/themi/Documents/chromedriver-win64/chromedriver.exe')
-
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-
-    try:
-        driver.get(url)
-        WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.article-body')))
-
-        article_content = driver.find_element(By.CSS_SELECTOR, 'div.article-body')
-
-        if not article_content:
-            paragraphs = driver.find_elements(By.TAG_NAME, 'p')
-            if not paragraphs:
-                return ""
-            content = " ".join([para.text.strip() for para in paragraphs])
-        else:
-            paragraphs = article_content.find_elements(By.TAG_NAME, 'p')
-            if not paragraphs:
-                return ""
-            content = " ".join([para.text.strip() for para in paragraphs])
-
-        return content
-
-    except Exception as e:
-        print(f"Error extracting content from {url}: {e}")
-        return ""
-
-    finally:
-        driver.quit()
-
-
-def read_seen_urls(file_path):
-    seen_urls = set()
-    try:
-        with open(file_path, newline='', encoding='utf-8') as file:
-            reader = csv.reader(file)
-            next(reader)
-            for row in reader:
-                if row:
-                    seen_urls.add(row[0])
-    except FileNotFoundError:
-        pass
-    return seen_urls
-
-
-def crawl_sitemap(start_year, start_month, seen_urls):
-    current_date = datetime(start_year, start_month, 1)
-    today = datetime.today()
-    collected_data = []
-
-    while current_date < today:
-        year, month = current_date.year, current_date.month
-        base_url = "https://www.derstandard.at/sitemaps/sitemap-{}-{}.xml"
-        url = base_url.format(year, f'{month:02}')
-        print(f"Crawling URL: {url}")
-
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print(f"Error fetching sitemap {url}: {e}")
-            current_date += timedelta(days=30)
-            continue
-
-        sitemap_content = response.content
-        soup = BeautifulSoup(sitemap_content, 'xml')
-        url_tags = soup.find_all('url')
-
-        if not url_tags:
-            current_date += timedelta(days=30)
-            continue
-
-        for url_tag in url_tags:
-            loc = url_tag.find('loc').text
-
-            if loc in seen_urls:
-                continue
-
-            seen_urls.add(loc)
-            lastmod = url_tag.find('lastmod').text
-            content = extract_article_content(loc)
-
-            if content:
-                collected_data.append((loc, lastmod, content))
-
-        if month == 12:
-            current_date = datetime(year + 1, 1, 1)
-        else:
-            current_date = datetime(year, month + 1, 1)
-
-    return collected_data
-
-
-start_year, start_month = 2024, 8
-seen_urls = read_seen_urls("urls.csv")
-
-start_time = time.time()
-new_urls = crawl_sitemap(start_year, start_month, seen_urls)
-end_time = time.time()
-
-elapsed_time = end_time - start_time
-print(f"Elapsed time: {elapsed_time:.2f} seconds")
-
-with open("urls.csv", "a", newline='', encoding='utf-8') as file:
-    writer = csv.writer(file)
-    writer.writerows(new_urls)
-
-print(f"Total new URLs collected: {len(new_urls)}")
-
-"""
-import requests
-from bs4 import BeautifulSoup
-import csv
-import time
 import os
+from datetime import datetime
+from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
 
-# Function to extract the article content
-def extract_article_content(url):
-    response = requests.get(url)
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, 'html.parser')
-        article_body = soup.find('div', class_='article-body')
-        if article_body:
-            paragraphs = [p.get_text() for p in article_body.find_all('p')]
-            content = "\n".join(paragraphs)
-            return content
+# Function to extract the article content asynchronously
+async def extract_article_content(session, url):
+    async with session.get(url) as response:
+        if response.status == 200:
+            soup = BeautifulSoup(await response.text(), 'html.parser')
+            article_body = soup.find('div', class_='article-body')
+            if article_body:
+                paragraphs = [p.get_text() for p in article_body.find_all('p')]
+                content = "\n".join(paragraphs)
+                return content
     return None
 
 # Function to parse the sitemap and extract article URLs and dates
-def parse_sitemap(sitemap_url):
-    response = requests.get(sitemap_url)
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, 'xml')
-        urls_dates = [(loc.get_text(), lastmod.get_text())
-                      for loc, lastmod in zip(soup.find_all('loc'), soup.find_all('lastmod'))]
-        return urls_dates
+async def parse_sitemap(session, sitemap_url):
+    async with session.get(sitemap_url) as response:
+        if response.status == 200:
+            soup = BeautifulSoup(await response.text(), 'xml')
+            urls_dates = [(loc.get_text(), lastmod.get_text())
+                          for loc, lastmod in zip(soup.find_all('loc'), soup.find_all('lastmod'))]
+            return urls_dates
     return []
 
 # Function to check if a URL is already in the CSV file
@@ -165,23 +39,49 @@ def is_url_in_csv(url, csv_file):
                 return True
     return False
 
-# Function to crawl articles from the sitemap and save to CSV
-def crawl_articles(sitemap_url, output_file):
-    urls_dates = parse_sitemap(sitemap_url)
-    with open(output_file, mode='a', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        if os.stat(output_file).st_size == 0:  # Check if the file is empty
-            writer.writerow(['URL', 'Date', 'Content'])  # Write headers if empty
+# Function to crawl articles from a sitemap
+async def crawl_articles(session, sitemap_url, output_file):
+    urls_dates = await parse_sitemap(session, sitemap_url)
+    to_write = []
+    
+    for url, lastmod in urls_dates:
+        if not is_url_in_csv(url, output_file):  # Skip if URL is already in CSV
+            print(f"Crawling: {url}")
+            content = await extract_article_content(session, url)
+            if content:
+                to_write.append([url, lastmod, content])
+    
+    if to_write:
+        with open(output_file, mode='a', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerows(to_write)  # Write all collected rows at once
 
-        for url, lastmod in urls_dates:
-            if not is_url_in_csv(url, output_file):  # Skip if URL is already in CSV
-                print(f"Crawling: {url}")
-                content = extract_article_content(url)
-                if content:
-                    writer.writerow([url, lastmod, content])
+# Function to loop through years and months up to the current date
+async def crawl_articles_from_start_year(start_year, output_file):
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for year in range(start_year, current_year + 1):
+            for month in range(1, 13):
+                if year == current_year and month > current_month:
+                    break  # Stop if we reach the current month
+                sitemap_url = f"https://www.derstandard.at/sitemaps/sitemap-{year}-{month:02d}.xml"
+                print(f"Processing sitemap: {sitemap_url}")
+                tasks.append(crawl_articles(session, sitemap_url, output_file))
+        
+        await asyncio.gather(*tasks)
 
+# Entry point to run the crawler
+def main():
+    output_file = "articles_2013_to_present.csv"
+    start_year = 2013
 
-# Usage example
-sitemap_url = "https://www.derstandard.at/sitemaps/sitemap-2024-01.xml"
-output_file = "articles_january_to_august.csv"
-crawl_articles(sitemap_url, output_file)
+    # Start the event loop for async crawling
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(crawl_articles_from_start_year(start_year, output_file))
+
+# Execute the main function
+if __name__ == "__main__":
+    main()
