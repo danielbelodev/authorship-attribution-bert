@@ -84,8 +84,8 @@ def crawl_sitemap(start_year, start_month, start_day, seen_urls, days_to_crawl=1
     return collected_data
 
 # Starte mit einem spezifischen Datum und messe die Zeit für einen Tag
-start_year, start_month, start_day = 2013, 1, 1
-days_to_crawl = 1
+start_year, start_month, start_day = 2013, 1, 2
+days_to_crawl = 2871
 
 # Gelesene URLs aus der Datei
 seen_urls = read_seen_urls("urls.csv")
