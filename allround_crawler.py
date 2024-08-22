@@ -18,11 +18,18 @@ def extract_article_content(url):
 
     # Extract the author
     author = "kein Autor"  # Default value
+
+    # Check in <header> for the author
     header = article.find("header")
     if header:
         author_span = header.find("span", class_="simple")
         if author_span:
             author = author_span.get_text(strip=True)
+    
+    # Check in <div class="article-origins"> for the author
+    origins_div = article.find("div", class_="article-origins")
+    if origins_div:
+        author = origins_div.get_text(strip=True)
 
     # Extract the article body
     article_body = article.find("div", class_="article-body")
@@ -98,9 +105,25 @@ def crawl_sitemap(url):
 
     return collected_data
 
-# Crawl the sitemap and process all articles
-sitemap_url = "https://www.derstandard.at/sitemaps/sitemap-2024-08.xml"
-crawl_sitemap(sitemap_url)
+# Determine the current year and month
+current_year = datetime.now().year
+current_month = datetime.now().month
+
+# Set the start year
+start_year = 2013
+
+# Generate and crawl sitemap URLs from January 2013 to the current date
+sitemap_urls = []
+for year in range(start_year, current_year + 1):
+    for month in range(1, 13):
+        if year == current_year and month > current_month:
+            break
+        sitemap_url = f"https://www.derstandard.at/sitemaps/sitemap-{year}-{month:02}.xml"
+        sitemap_urls.append(sitemap_url)
+
+# Crawl each sitemap URL
+for sitemap_url in sitemap_urls:
+    crawl_sitemap(sitemap_url)
 
 # Final count of collected data
 print(f"Total new URLs collected: {len(read_seen_urls('urls.csv'))}")
