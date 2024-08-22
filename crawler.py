@@ -1,61 +1,124 @@
-import requests  # Holt sich Daten von Websites
-from bs4 import BeautifulSoup  # Parst HTML/XML-Daten
-import csv  # Zum Schreiben von CSV-Dateien
+import requests
+from bs4 import BeautifulSoup
+import csv
+from datetime import datetime, timedelta
+import time
 
-"""
-#das Problem hier ist, dass ich nur einen Paragraphen bekomme
 def extract_article_content(url):
-    response = requests.get(url).text
-    article = BeautifulSoup(response, 'html.parser')
-    
-    article_body = article.find("div", {"class": 'article-body'})
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching URL {url}: {e}")
+        return ""
+
+    article = BeautifulSoup(response.text, 'html.parser')
+
+    article_body = article.find("div", class_="article-body")
     if article_body is None:
-        print("Dieser Artikel hat keinen Body")
-    
-    paragraphs = article_body.find_all('p')
-    content = [para.get_text() for para in paragraphs]
-    print(f"Anzahl der gefundenen Paragraphen: {len(paragraphs)}")
+        return ""
+
+    paragraphs = article_body.find_all("p")
+
+    if not paragraphs:
+        return ""
+
+    content = " ".join([para.get_text(strip=True) for para in paragraphs])
     return content
-"""
-def crawl_sitemap(year, month):
-    base_url = "https://www.derstandard.at/sitemaps/sitemap-{}-{:02d}.xml"  # URL-Format der Sitemap
-    url = base_url.format(year, month)  # Ersetze Jahr und Monat
-    print(f"Crawling URL: {url}")  # Zeigt die aktuelle URL an
-    
-    response = requests.get(url)  # Holt sich die Sitemap
-    if response.status_code != 200:  # Prüft, ob die Anfrage erfolgreich war
-        print(f"Failed to retrieve sitemap for {year}-{month:02d}")  # Gibt Fehler aus, wenn nicht
-        return []  # Beendet die Funktion mit leerer Liste
 
-    sitemap_content = response.content  # Holt den Inhalt der Sitemap
-    soup = BeautifulSoup(sitemap_content, 'xml')  # Parst den XML-Inhalt
-    
-    urls = []
-    for url_tag in soup.find_all('url'):
+def read_seen_urls(file_path):
+    seen_urls = set()
+    try:
+        with open(file_path, newline='', encoding='utf-8') as file:
+            reader = csv.reader(file)
+            next(reader)  # Skip header
+            for row in reader:
+                if row:  # Skip empty rows
+                    seen_urls.add(row[0])
+    except FileNotFoundError:
+        pass
+    return seen_urls
+
+def save_to_csv(file_path, data):
+    with open(file_path, "a", newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerows(data)
+    print(f"Saved {len(data)} new URLs to {file_path}")
+
+def crawl_sitemap(url, seen_urls):
+    collected_data = []
+
+    print(f"Crawling Sitemap URL: {url}")
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching sitemap {url}: {e}")
+        return collected_data
+
+    sitemap_content = response.content
+    soup = BeautifulSoup(sitemap_content, 'xml')
+    url_tags = soup.find_all('url')
+
+    if not url_tags:
+        return collected_data
+
+    for url_tag in url_tags:
         loc = url_tag.find('loc').text
+
+        if loc in seen_urls:
+            continue
+
+        seen_urls.add(loc)
         lastmod = url_tag.find('lastmod').text
-        inhalt = extract_article_content(loc) # 
+        print(f"Processing Article URL: {loc}")
+        content = extract_article_content(loc)
 
-        #hier muss ich ja den link einneschauen, damit ich den content lesen kann
+        # Only add to collected_data if content is not empty
+        if content:
+            collected_data.append((loc, lastmod, content))
 
-        urls.append((loc, lastmod, inhalt))
-    
-    # Gehe zum nächsten Monat
-    month += 1
-    if month > 12:  # Falls Monat größer als 12 ist
-        month = 1  # Setze Monat auf Januar
-        year += 1  # Und erhöhe das Jahr
+    # Save collected data to CSV after processing this sitemap
+    if collected_data:
+        save_to_csv("urls.csv", collected_data)
 
-    # Rekursiver Aufruf für den nächsten Monat
-    return urls + crawl_sitemap(year, month)
+    return collected_data
 
-# Starte mit Januar 2023 und hole alle URLs
-all_urls = crawl_sitemap(2023, 1)
+def crawl_all_sitemaps(start_date, end_date):
+    current_date = start_date
+    seen_urls = read_seen_urls("urls.csv")
 
-# Speichere die URLs und das Datum in eine CSV-Datei
-with open("urls.csv", "w", newline='', encoding='utf-8') as file:
-    writer = csv.writer(file)  # CSV-Schreiber erstellen
-    writer.writerow(["URL", "Last Modified"])  # Schreibe die Header-Zeile
-    writer.writerows(all_urls)  # Schreibe alle URLs und Daten
+    start_time = time.time()
 
-print(f"Total URLs collected: {len(all_urls)}")  # Zeige die Gesamtanzahl der gesammelten URLs
+    while current_date <= end_date:
+        year, month = current_date.year, current_date.month
+
+        # Monthly Sitemap
+        monthly_sitemap_url = f"https://www.derstandard.at/sitemaps/sitemap-{year}-{month:02}.xml"
+        crawl_sitemap(monthly_sitemap_url, seen_urls)
+
+        # Daily Sitemaps for the current month
+        num_days = (current_date.replace(day=28) + timedelta(days=4)).day  # Get the number of days in the month
+        for day in range(1, num_days + 1):
+            daily_sitemap_url = f"https://www.derstandard.at/sitemaps/sitemap-{year}-{month:02}-{day:02}.xml"
+            crawl_sitemap(daily_sitemap_url, seen_urls)
+
+        # Move to the next month
+        if current_date.month == 12:
+            current_date = datetime(current_date.year + 1, 1, 1)
+        else:
+            current_date = datetime(current_date.year, current_date.month + 1, 1)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Elapsed time for crawling: {elapsed_time / 60:.2f} minutes")
+
+# Start crawling from January 2013 until today
+start_date = datetime(2024, 5, 1)
+end_date = datetime.now()
+
+crawl_all_sitemaps(start_date, end_date)
+
+# Final count of collected data
+print(f"Total new URLs collected: {len(read_seen_urls('urls.csv'))}")
