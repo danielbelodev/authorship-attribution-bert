@@ -110,7 +110,7 @@ current_year = datetime.now().year
 current_month = datetime.now().month
 
 # Set the start year
-start_year = 2013
+start_year = 2023
 
 # Generate and crawl sitemap URLs from January 2013 to the current date
 sitemap_urls = []
