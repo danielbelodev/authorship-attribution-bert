@@ -7,7 +7,7 @@ from datetime import datetime, time, timedelta
 os.environ['SQLALCHEMY_WARN_20'] = '1'
 
 # CSV-Dateipfad
-csv_file = 'C:\\Users\\Daniel\\Documents\\Arbeit\\diplomarbeit\\daten.csv'
+csv_file = 'C:\\Users\\Daniel\\Documents\\Arbeit\\diplomarbeit\\ks.csv'
 
 # MySQL-Datenbankverbindung
 engine = create_engine('mysql+mysqlconnector://root:1234@localhost/diplomarbeit')
@@ -46,6 +46,9 @@ def round_up_to_next_second(dt):
 df['lastmod'] = df['lastmod'].apply(fix_lastmod_datetime)
 df['lastmod'] = df['lastmod'].apply(round_up_to_next_second)
 
+# Entferne Mikrosekunden aus der 'lastmod'-Spalte
+df['lastmod'] = df['lastmod'].apply(lambda x: x.replace(microsecond=0) if pd.notnull(x) else x)
+
 # Maximale Länge für Autorennamen auf 255 Zeichen begrenzen
 max_length = 255
 df['author'] = df['author'].apply(lambda x: x[:max_length] if isinstance(x, str) else x)
@@ -68,6 +71,9 @@ with engine.connect() as connection:
     if df.empty:
         print("Keine neuen Artikel zum Einfügen.")
     else:
+        # Filtere die DataFrame-Zeilen basierend auf None-Werten in 'lastmod'
+        df = df[df['lastmod'].notna()]
+
         for index, row in df.iterrows():
             # Überprüfen, ob der Autor bereits existiert
             result = connection.execute(
