@@ -1,0 +1,15 @@
+-- Tabelle für Autoren erstellen
+CREATE TABLE authors (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
+-- Tabelle für Artikel erstellen
+CREATE TABLE articles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    url TEXT NOT NULL,
+    lastmod DATETIME NOT NULL,
+    content LONGTEXT NOT NULL,
+    author_id INT,
+    FOREIGN KEY (author_id) REFERENCES authors(id)
+);
