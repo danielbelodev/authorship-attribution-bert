@@ -5,14 +5,21 @@ from transformers import BertTokenizer, BertForSequenceClassification, Trainer, 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import os
-
-# 1. Datenbankverbindung und Datenimport
-# Du kannst pandas verwenden, um Daten direkt aus der Datenbank zu laden
 import sqlalchemy
 
+# 1. Datenbankverbindung und Datenimport
+# Verwenden einer expliziten Verbindung
 engine = sqlalchemy.create_engine('mysql+mysqlconnector://root:1234@localhost/diplomarbeit')
-query = "SELECT content, author FROM articles"
-df = pd.read_sql(query, engine)
+
+# Explizite Verbindung herstellen
+with engine.connect() as connection:
+    query = """
+    SELECT articles.content, authors.name AS author
+    FROM articles
+    JOIN authors ON articles.author_id = authors.id 
+    """
+    # Abfrage mit der Verbindung durchführen
+    df = pd.read_sql(query, con=connection)
 
 # 2. Daten vorverarbeiten
 # Autoren in numerische Labels umwandeln
@@ -46,22 +53,29 @@ class TextDataset(Dataset):
             'labels': torch.tensor(label, dtype=torch.long)
         }
 
+# Erstellen der Trainings- und Test-Datensätze
 train_dataset = TextDataset(train_texts, train_labels, tokenizer)
 test_dataset = TextDataset(test_texts, test_labels, tokenizer)
 
+# GPU-Prüfung und Gerätezuteilung
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
 # 4. Modell laden und konfigurieren
 model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=len(label_encoder.classes_))
+model.to(device)  # Modell auf GPU verschieben, falls verfügbar
 
 # 5. TrainingArguments und Trainer initialisieren
 training_args = TrainingArguments(
     output_dir='./results',
     num_train_epochs=3,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=4,
+    per_device_train_batch_size=16,  # Erhöhte Batchgröße
+    per_device_eval_batch_size=16,
     warmup_steps=500,
     weight_decay=0.01,
     logging_dir='./logs',
-    evaluation_strategy="epoch"
+    evaluation_strategy="epoch",
+    fp16=True  # Mixed Precision Training aktivieren
 )
 
 trainer = Trainer(
