@@ -15,6 +15,7 @@ conda install pytorch torchvision torchaudio -c pytorch
 pip install transformers
 pip install sympy==1.13.1
 conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+pip install accelerate>=0.26.0
 
 ```
 Da funktioniert alles wieder und ich kann den Code ausführen.
