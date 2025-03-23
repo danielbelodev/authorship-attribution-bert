@@ -1,0 +1,12 @@
+Virtual_Environments/*
+BERT/bert_author_model_german
+BERT/results
+airflow_env_new
+airflow_home/logs/*
+airflow_home
+dags
+airflow/logs/*
+
+
+
+
