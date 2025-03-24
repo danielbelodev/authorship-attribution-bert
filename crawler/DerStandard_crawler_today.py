@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 from datetime import datetime
+import os
+import sys
 
 # Define the cookie for GDPR compliance
 COOKIES = {'DSGVO_ZUSAGE_V1': 'true'}
@@ -58,6 +60,7 @@ def save_to_csv(file_path, data):
         writer = csv.writer(file)
         writer.writerows(data)
     print(f"Saved {len(data)} new URLs to {file_path}")
+    return data
 
 def read_seen_urls(file_path):
     seen_urls = set()
@@ -72,21 +75,26 @@ def read_seen_urls(file_path):
         pass  # File will be created when saving
     return seen_urls
 
-def crawl_today_articles():
+def crawl_today_articles(csv_path=None):
     """Crawl only today's articles from derstandard.at"""
     # Get today's date
     today = datetime.now()
     today_date = today.date()
+    
+    # Set default CSV path if not provided
+    if csv_path is None:
+        csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "urls_today.csv")
     
     # Create the sitemap URL for the current month
     sitemap_url = f"https://www.derstandard.at/sitemaps/sitemap-{today.year}-{today.month:02}.xml"
     
     print(f"Starting crawler for articles from {today_date}")
     print(f"Using sitemap: {sitemap_url}")
+    print(f"CSV will be saved to: {csv_path}")
     
     # Initialize data collection
     collected_data = []
-    seen_urls = read_seen_urls("urls_today.csv")
+    seen_urls = read_seen_urls(csv_path)
     
     try:
         response = requests.get(sitemap_url, cookies=COOKIES)
@@ -135,7 +143,7 @@ def crawl_today_articles():
 
     # Save collected data to CSV
     if collected_data:
-        save_to_csv("urls_today.csv", collected_data)
+        save_to_csv(csv_path, collected_data)
         print(f"Successfully collected {len(collected_data)} articles from today")
     else:
         print("No new articles found for today")
