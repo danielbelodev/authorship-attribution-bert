@@ -1,23 +1,17 @@
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
 import os
 import sys
 import requests
-from bs4 import BeautifulSoup
 import csv
+from bs4 import BeautifulSoup
+import pandas as pd
+import mysql.connector
+from airflow import DAG
+from airflow.operators.python import PythonOperator
 
-# Add the project directory to Python path
-project_dir = os.path.expanduser('~/schule/diplomarbeit')
-if project_dir not in sys.path:
-    sys.path.append(project_dir)
-
-# Import the functions from the original files
-from crawler.DerStandard_crawler_today import extract_article_content, save_to_csv, read_seen_urls
-
-# Constants
-COOKIES = {'DSGVO_ZUSAGE_V1': 'true'}
-CSV_PATH = os.path.join(project_dir, 'crawler', 'urls_today.csv')
+# Add project directory to Python path
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_dir)
 
 # Default arguments for the DAG
 default_args = {
@@ -34,215 +28,217 @@ default_args = {
 dag = DAG(
     'detailed_workflow',
     default_args=default_args,
-    description='Detailed workflow with many tasks using original functions',
+    description='Detailed workflow for DerStandard article processing',
     schedule_interval='0 0 * * *',  # Run daily at midnight
     catchup=False,
 )
 
-# Task 1: Get today's date and create sitemap URL
-def setup_date_and_url():
-    """Get today's date and create the sitemap URL"""
-    today = datetime.now()
-    today_date = today.date()
-    sitemap_url = f"https://www.derstandard.at/sitemaps/sitemap-{today.year}-{today.month:02}.xml"
-    
-    print(f"Processing articles for {today_date}")
-    print(f"Using sitemap: {sitemap_url}")
-    
-    # Return values for the next task
-    return {
-        'today_date': today_date,
-        'sitemap_url': sitemap_url
-    }
+def setup_date_and_url(**context):
+    """Set up the date and URL for the workflow."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    base_url = "https://www.derstandard.at/sitemap/"
+    sitemap_url = f"{base_url}{today}.xml"
+    context['task_instance'].xcom_push(key='sitemap_url', value=sitemap_url)
+    context['task_instance'].xcom_push(key='date', value=today)
+    return f"Setup completed for date: {today}"
 
-# Task 2: Fetch the sitemap
 def fetch_sitemap(**context):
-    """Fetch the sitemap XML"""
-    ti = context['ti']
-    result = context['ti'].xcom_pull(task_ids='setup_date_and_url')
-    sitemap_url = result['sitemap_url']
-    
-    print(f"Fetching sitemap: {sitemap_url}")
-    response = requests.get(sitemap_url, cookies=COOKIES)
-    response.raise_for_status()
-    
-    # Store basic info about the sitemap
-    return {
-        'sitemap_url': sitemap_url,
-        'status_code': response.status_code,
-        'content_length': len(response.content),
-        'content': response.content.decode('utf-8')  # Decode bytes to string
-    }
+    """Fetch the sitemap content."""
+    sitemap_url = context['task_instance'].xcom_pull(task_ids='setup_date_and_url', key='sitemap_url')
+    try:
+        response = requests.get(sitemap_url)
+        response.raise_for_status()
+        context['task_instance'].xcom_push(key='sitemap_content', value=response.text)
+        return "Sitemap fetched successfully"
+    except Exception as e:
+        raise Exception(f"Failed to fetch sitemap: {str(e)}")
 
-# Task 3: Parse the sitemap
 def parse_sitemap(**context):
-    """Parse the sitemap XML and find today's articles"""
-    result_fetch = context['ti'].xcom_pull(task_ids='fetch_sitemap')
-    result_setup = context['ti'].xcom_pull(task_ids='setup_date_and_url')
-    
-    sitemap_content = result_fetch['content'].encode('utf-8')  # Convert string back to bytes for BeautifulSoup
-    today_date = result_setup['today_date']
-    
+    """Parse the sitemap to extract URLs and last modification dates."""
+    sitemap_content = context['task_instance'].xcom_pull(task_ids='fetch_sitemap', key='sitemap_content')
     soup = BeautifulSoup(sitemap_content, 'xml')
-    url_tags = soup.find_all('url')
+    urls = []
+    lastmods = []
     
-    # Filter for today's articles
-    today_urls = []
-    for url_tag in url_tags:
-        loc = url_tag.find('loc').text
-        lastmod_tag = url_tag.find('lastmod')
-        
-        if not lastmod_tag:
-            continue
-            
-        lastmod = lastmod_tag.text
-        
-        # Parse the lastmod date to check if it's from today
-        try:
-            lastmod_date = datetime.fromisoformat(lastmod.replace('Z', '+00:00')).date()
-            # Add if from today
-            if lastmod_date == today_date:
-                today_urls.append((loc, lastmod))
-        except (ValueError, TypeError):
-            continue
+    for url in soup.find_all('url'):
+        urls.append(url.loc.text)
+        lastmods.append(url.lastmod.text if url.lastmod else None)
     
-    print(f"Found {len(url_tags)} URLs in sitemap, {len(today_urls)} are from today")
-    
-    return {
-        'total_urls': len(url_tags),
-        'today_urls': today_urls
-    }
+    context['task_instance'].xcom_push(key='urls', value=urls)
+    context['task_instance'].xcom_push(key='lastmods', value=lastmods)
+    return f"Parsed {len(urls)} URLs from sitemap"
 
-# Task 4: Check existing URLs
-def check_existing_urls():
-    """Check which URLs have already been processed"""
-    # Call the original function
-    seen_urls = read_seen_urls(CSV_PATH)
-    print(f"Found {len(seen_urls)} existing URLs in the database")
-    
-    return {
-        'seen_urls': list(seen_urls)
-    }
+def check_existing_urls(**context):
+    """Check which URLs already exist in the database."""
+    urls = context['task_instance'].xcom_pull(task_ids='parse_sitemap', key='urls')
+    try:
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="1234",
+            database="diplomarbeit",
+            port=33061
+        )
+        cursor = conn.cursor()
+        
+        # Get existing URLs
+        cursor.execute("SELECT url FROM articles")
+        existing_urls = {row[0] for row in cursor.fetchall()}
+        
+        # Find new URLs
+        new_urls = [url for url in urls if url not in existing_urls]
+        
+        context['task_instance'].xcom_push(key='new_urls', value=new_urls)
+        return f"Found {len(new_urls)} new URLs to process"
+    except Exception as e:
+        raise Exception(f"Database check failed: {str(e)}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
-# Task 5: Extract content from articles
 def extract_content(**context):
-    """Extract content from today's articles"""
-    result_parse = context['ti'].xcom_pull(task_ids='parse_sitemap')
-    result_check = context['ti'].xcom_pull(task_ids='check_existing_urls')
+    """Extract content from new URLs."""
+    new_urls = context['task_instance'].xcom_pull(task_ids='check_existing_urls', key='new_urls')
+    articles = []
     
-    today_urls = result_parse['today_urls']
-    seen_urls = set(result_check['seen_urls'])
-    
-    collected_data = []
-    for loc, lastmod in today_urls:
-        if loc in seen_urls:
-            continue
+    for url in new_urls:
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-        print(f"Processing article from today: {loc}")
-        # Call the original extract function
-        content, author = extract_article_content(loc)
-        
-        # Only add if content is not empty
-        if content:
-            collected_data.append((loc, lastmod, author, content))
+            # Extract article details
+            title = soup.find('h1').text.strip() if soup.find('h1') else ''
+            content = ' '.join([p.text.strip() for p in soup.find_all('p')])
+            date = soup.find('time')['datetime'] if soup.find('time') else ''
+            
+            articles.append({
+                'url': url,
+                'title': title,
+                'content': content,
+                'date': date
+            })
+        except Exception as e:
+            print(f"Error processing {url}: {str(e)}")
+            continue
     
-    print(f"Processed {len(collected_data)} new articles")
-    
-    return {
-        'collected_data': collected_data
-    }
+    context['task_instance'].xcom_push(key='articles', value=articles)
+    return f"Extracted content from {len(articles)} articles"
 
-# Task 6: Save articles to CSV
 def save_articles(**context):
-    """Save the collected articles to CSV"""
-    result = context['ti'].xcom_pull(task_ids='extract_content')
-    collected_data = result['collected_data']
+    """Save extracted articles to CSV file."""
+    articles = context['task_instance'].xcom_pull(task_ids='extract_content', key='articles')
+    date = context['task_instance'].xcom_pull(task_ids='setup_date_and_url', key='date')
     
-    if not collected_data:
-        print("No new articles to save")
-        return "No new articles saved"
+    if not articles:
+        # Create an empty CSV file to maintain the workflow
+        csv_file = f"articles_{date}.csv"
+        with open(csv_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=['url', 'title', 'content', 'date'])
+            writer.writeheader()
+        context['task_instance'].xcom_push(key='csv_file', value=csv_file)
+        return "No articles to save, created empty CSV file"
     
-    # Call the original save function
-    save_to_csv(CSV_PATH, collected_data)
-    
-    print(f"Saved {len(collected_data)} articles to CSV: {CSV_PATH}")
-    return f"Saved {len(collected_data)} articles"
+    csv_file = f"articles_{date}.csv"
+    try:
+        with open(csv_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=['url', 'title', 'content', 'date'])
+            writer.writeheader()
+            writer.writerows(articles)
+        
+        context['task_instance'].xcom_push(key='csv_file', value=csv_file)
+        return f"Saved {len(articles)} articles to {csv_file}"
+    except Exception as e:
+        raise Exception(f"Failed to save articles to CSV: {str(e)}")
 
-# Task 7: Run database import
-def run_database_import():
-    """Run the database connection script with the CSV file"""
-    # Get the full path to the connection.py file
-    connection_path = os.path.join(project_dir, 'database', 'connection.py')
+def run_database_import(**context):
+    """Import articles from CSV file into MySQL database."""
+    csv_file = context['task_instance'].xcom_pull(task_ids='save_articles', key='csv_file')
     
-    # Set the environment variable
-    os.environ['CRAWLER_CSV_PATH'] = CSV_PATH
+    if not csv_file:
+        raise Exception("No CSV file path found in XCom")
     
-    # Call the script using os.system or subprocess
-    # This is simpler than the importlib approach
-    import subprocess
-    
-    print(f"Running database import with: {connection_path}")
-    result = subprocess.run(
-        [sys.executable, connection_path, CSV_PATH],
-        capture_output=True,
-        text=True
-    )
-    
-    print("Database stdout:", result.stdout)
-    if result.stderr:
-        print("Database stderr:", result.stderr)
-    
-    return "Database import completed"
+    try:
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="1234",
+            database="diplomarbeit",
+            port=33061
+        )
+        cursor = conn.cursor()
+        
+        # Read CSV file
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            row_count = 0
+            for row in reader:
+                # Insert article into database
+                cursor.execute("""
+                    INSERT INTO articles (url, title, content, date)
+                    VALUES (%s, %s, %s, %s)
+                """, (row['url'], row['title'], row['content'], row['date']))
+                row_count += 1
+        
+        conn.commit()
+        return f"Successfully imported {row_count} articles"
+    except Exception as e:
+        raise Exception(f"Database import failed: {str(e)}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 # Define the tasks
-task_setup = PythonOperator(
+setup_task = PythonOperator(
     task_id='setup_date_and_url',
     python_callable=setup_date_and_url,
+    provide_context=True,
     dag=dag,
 )
 
-task_fetch = PythonOperator(
+fetch_task = PythonOperator(
     task_id='fetch_sitemap',
     python_callable=fetch_sitemap,
     provide_context=True,
     dag=dag,
 )
 
-task_parse = PythonOperator(
+parse_task = PythonOperator(
     task_id='parse_sitemap',
     python_callable=parse_sitemap,
     provide_context=True,
     dag=dag,
 )
 
-task_check = PythonOperator(
+# Add new tasks
+check_task = PythonOperator(
     task_id='check_existing_urls',
     python_callable=check_existing_urls,
+    provide_context=True,
     dag=dag,
 )
 
-task_extract = PythonOperator(
+extract_task = PythonOperator(
     task_id='extract_content',
     python_callable=extract_content,
     provide_context=True,
     dag=dag,
 )
 
-task_save = PythonOperator(
+# Add final tasks
+save_task = PythonOperator(
     task_id='save_articles',
     python_callable=save_articles,
     provide_context=True,
     dag=dag,
 )
 
-task_db = PythonOperator(
+import_task = PythonOperator(
     task_id='run_database_import',
     python_callable=run_database_import,
+    provide_context=True,
     dag=dag,
 )
 
-# Set task dependencies
-task_setup >> task_fetch >> task_parse
-task_parse >> task_extract
-task_check >> task_extract
-task_extract >> task_save >> task_db 
+# Update task dependencies
+setup_task >> fetch_task >> parse_task >> check_task >> extract_task >> save_task >> import_task 

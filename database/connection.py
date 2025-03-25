@@ -4,9 +4,57 @@ import os
 import sys
 from datetime import datetime, time, timedelta
 from dateutil import parser
+import re
 
 # Optional: Um SQLAlchemy-Warnungen zu stummschalten (oder auf 2.0 vorbereiten)
 os.environ['SQLALCHEMY_WARN_20'] = '1'
+
+def clean_author_name(author):
+    """Bereinigt Autorennamen von Ortsangaben und formatiert sie einheitlich"""
+    if pd.isnull(author) or not isinstance(author, str):
+        return author
+
+    # Entferne Ortsangaben wie "aus Wien", "aus Deutschland"
+    author = re.sub(r' aus [A-ZÄÖÜ][a-zäöüß]+', '', author).strip()
+    
+    # Setze Autoren in Anführungszeichen
+    return f'"{author}"'
+
+def clean_article_content(content):
+    """Bereinigt den Artikelinhalt von nicht relevanten Informationen"""
+    if pd.isnull(content) or not isinstance(content, str):
+        return content
+
+    # Entferne Autorenangaben mit Datum am Ende
+    content = re.sub(r'\([A-Za-z\s,\.und]+\d{1,2}\.\d{1,2}\.\d{4}\)$', '', content).strip()
+    
+    # Entferne Agenturangaben
+    content = re.sub(r'\(?(Reuters|APA|dpa|red)(, [\d\.]+)?\)?$', '', content).strip()
+    
+    # Entferne Redaktionshinweise
+    content = re.sub(r'\(red\)', '', content, flags=re.IGNORECASE).strip()
+    
+    # Entferne Interaktionsaufforderungen
+    content = re.sub(r'Posten Sie im Forum[.!?]', '', content, flags=re.IGNORECASE).strip()
+    
+    return content
+
+def split_authors(author_str):
+    """Trennt Autorennamen und gibt sie als einen String in Anführungszeichen zurück"""
+    if pd.isnull(author_str) or not isinstance(author_str, str):
+        return '""'
+        
+    # Ersetze verschiedene Trennzeichen mit einem einheitlichen Komma
+    author_str = re.sub(r'\s*(,|oder|&|/|und)\s*', ',', author_str)
+    
+    # Trenne die Autoren und entferne Leerzeichen
+    authors = [author.strip() for author in author_str.split(',') if author.strip()]
+    
+    # Setze jeden Autor in Anführungszeichen und verbinde sie mit Kommas
+    quoted_authors = [f'"{author}"' for author in authors]
+    
+    # Verbinde alle Autoren mit Kommas und setze das Ganze in Anführungszeichen
+    return f'"{", ".join(quoted_authors)}"'
 
 # Get CSV file path from command line argument or environment variable
 if len(sys.argv) > 1:
@@ -107,40 +155,60 @@ with engine.connect() as connection:
         print(f"Processing {len(df)} new articles")
 
         for index, row in df.iterrows():
-            # Überprüfen, ob der Autor bereits existiert
-            result = connection.execute(
-                text("""
-                    SELECT id FROM authors WHERE name = :name
-                """), {'name': row['author']}
-            ).fetchone()
-
-            if result:
-                # Autor existiert, verwende die bestehende ID
-                author_id = result['id']
-            else:
-                # Autor existiert nicht, füge ihn hinzu und hole die ID
-                connection.execute(
-                    text("""
-                        INSERT INTO authors (name) VALUES (:name)
-                    """), {'name': row['author']}
-                )
-                # Hole die ID des neu eingefügten Autors
-                author_id = connection.execute(
-                    text("""
-                        SELECT id FROM authors WHERE name = :name
-                    """), {'name': row['author']}
-                ).fetchone()['id']
-
-            # Article in die articles Tabelle einfügen mit der entsprechenden author_id
+            # Artikel in die articles Tabelle einfügen
             connection.execute(
                 text("""
-                    INSERT INTO articles (url, lastmod, content, author_id)
-                    VALUES (:url, :lastmod, :content, :author_id)
+                    INSERT INTO articles (url, lastmod, content) 
+                    VALUES (:url, :lastmod, :content)
                 """), {
                     'url': row['url'],
                     'lastmod': row['lastmod'].strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(row['lastmod']) else None,
-                    'content': row['content'],
-                    'author_id': author_id
+                    'content': row['content']
                 }
             )
-        print("Neue Artikel wurden erfolgreich eingefügt.")
+            
+            # Hole die ID des neu eingefügten Artikels
+            article_id = connection.execute(text("""
+                SELECT LAST_INSERT_ID()
+            """)).scalar()
+            
+            # Verarbeite die Autoren
+            # Entferne die äußeren Anführungszeichen und teile die Autoren
+            authors_str = row['author'].strip('"')  # Entferne äußere Anführungszeichen
+            authors = [auth.strip('"') for auth in authors_str.split('", "')]  # Teile die einzelnen Autoren
+            
+            for author in authors:
+                # Überprüfe, ob der Autor bereits existiert
+                result = connection.execute(
+                    text("""
+                        SELECT id FROM authors WHERE name = :name
+                    """), {'name': author}
+                ).fetchone()
+
+                if result:
+                    # Autor existiert, verwende die bestehende ID
+                    author_id = result['id']
+                else:
+                    # Autor existiert nicht, füge ihn hinzu
+                    connection.execute(
+                        text("""
+                            INSERT INTO authors (name) VALUES (:name)
+                        """), {'name': author}
+                    )
+                    # Hole die ID des neu eingefügten Autors
+                    author_id = connection.execute(text("""
+                        SELECT LAST_INSERT_ID()
+                    """)).scalar()
+
+                # Verknüpfe Artikel und Autor in der placeholder Tabelle
+                connection.execute(
+                    text("""
+                        INSERT IGNORE INTO placeholder (article_id, author_id) 
+                        VALUES (:article_id, :author_id)
+                    """), {
+                        'article_id': article_id,
+                        'author_id': author_id
+                    }
+                )
+                
+        print("Neue Artikel und Autoren wurden erfolgreich eingefügt.")

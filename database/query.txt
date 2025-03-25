@@ -10,6 +10,13 @@ CREATE TABLE articles (
     url TEXT NOT NULL,
     lastmod DATETIME NOT NULL,
     content LONGTEXT NOT NULL,
+);
+
+-- Neue Tabelle für die Verknüpfung von Artikeln und Autoren
+CREATE TABLE placeholder (
+    article_id INT,
     author_id INT,
+    PRIMARY KEY (article_id, author_id),
+    FOREIGN KEY (article_id) REFERENCES articles(id),
     FOREIGN KEY (author_id) REFERENCES authors(id)
 );

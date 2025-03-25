@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 from datetime import datetime
+import re
 
 # Define the cookie for GDPR compliance
 COOKIES = {'DSGVO_ZUSAGE_V1': 'true'}
@@ -30,6 +31,15 @@ def extract_article_content(url):
     origins_div = article.find("div", class_="article-origins")
     if origins_div:
         author = origins_div.get_text(strip=True)
+
+    # Clean and split author names
+    if author != "kein Autor":
+        # Replace various separators with comma
+        author = re.sub(r'\s*(,|oder|&|/|und)\s*', ',', author)
+        # Split and clean each author name
+        authors = [auth.strip() for auth in author.split(',') if auth.strip()]
+        # Join with comma and space
+        author = ", ".join(authors)
 
     # Extract the article body
     article_body = article.find("div", class_="article-body")
