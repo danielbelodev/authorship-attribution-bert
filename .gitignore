@@ -5,6 +5,9 @@ airflow_env_new
 airflow_home/logs/*
 airflow_home
 airflow/logs/*
+BERT/author_classification2
+articles_2025-03-25.csv
+ks.csv
 
 
 
