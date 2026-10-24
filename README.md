@@ -5,6 +5,11 @@ Diplomarbeit an der HTL Hallein (Wirtschaftsingenieure – Betriebsinformatik), 
 Kann ein Sprachmodell erkennen, **wer** einen Zeitungsartikel geschrieben hat, nur anhand des Schreibstils?
 Dafür haben wir rund 200.000 Artikel von [derStandard.at](https://www.derstandard.at) gesammelt und ein deutsches BERT-Modell darauf trainiert, die Autorin oder den Autor eines Textes vorherzusagen.
 
+## Team
+
+Daniel Belogrivov  
+Leon Weber
+
 ## Pipeline
 
 ```
