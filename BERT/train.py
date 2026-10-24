@@ -10,65 +10,13 @@ from transformers import (
     DataCollatorWithPadding,
     EarlyStoppingCallback
 )
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, confusion_matrix
-import sqlalchemy
-import seaborn as sns
-import matplotlib.pyplot as plt
-from collections import defaultdict
+from sklearn.metrics import accuracy_score
 
-# Datenbankverbindung
-engine = sqlalchemy.create_engine('mysql+mysqlconnector://root:1234@localhost/diplomarbeit')
+from data_utils import load_articles, split_by_author
 
-# SQL-Abfrage
-query = """
-SELECT a.id as article_id, a.content, auth.name as author
-FROM articles a
-JOIN placeholder p ON a.id = p.article_id
-JOIN authors auth ON p.author_id = auth.id
-"""
-
-# Daten laden
-df = pd.read_sql(query, engine)
-df = df[df['author'] != 'kein Autor']
-
-# Nur Autoren mit mindestens 10 Artikeln
-author_article_counts = df['author'].value_counts()
-authors_with_min_10_articles = author_article_counts[author_article_counts >= 10].index
-df_filtered = df[df['author'].isin(authors_with_min_10_articles)]
-
-# Autor → Artikel-IDs
-author_to_articles = defaultdict(set)
-for _, row in df_filtered.iterrows():
-    author_to_articles[row['author']].add(row['article_id'])
-
-# Train/Test-Split pro Autor (80/20)
-train_article_ids_by_author = {}
-test_article_ids_by_author = {}
-
-for author, article_ids in author_to_articles.items():
-    article_ids_list = list(article_ids)
-    train_ids, test_ids = train_test_split(article_ids_list, test_size=0.2, random_state=42)
-    train_article_ids_by_author[author] = set(train_ids)
-    test_article_ids_by_author[author] = set(test_ids)
-
-    # Testartikel: wenn mindestens ein Autor den Artikel im Testset hat
-test_article_ids = set()
-for ids in test_article_ids_by_author.values():
-    test_article_ids.update(ids)
-
-all_article_ids = set(df_filtered['article_id'].unique())
-train_article_ids = all_article_ids - test_article_ids
-
-# Trainings-/Test-Daten
-train_df = df_filtered[df_filtered['article_id'].isin(train_article_ids)].reset_index(drop=True)
-test_df = df_filtered[df_filtered['article_id'].isin(test_article_ids)].reset_index(drop=True)
-
-# Label-Encoding
-label_encoder = LabelEncoder()
-train_df['author_id'] = label_encoder.fit_transform(train_df['author'])
-test_df['author_id'] = label_encoder.transform(test_df['author'])
+# Daten laden (ohne Autorensignatur) und pro Autor 80/20 aufteilen
+df_filtered = load_articles()
+train_df, test_df, label_encoder = split_by_author(df_filtered)
 
 # Dataset-Klasse
 class TextDataset(Dataset):
@@ -117,7 +65,7 @@ training_args = TrainingArguments(
     learning_rate=5e-5,
     per_device_train_batch_size=8,
     per_device_eval_batch_size=8,
-    evaluation_strategy='epoch',
+    eval_strategy='epoch',
     save_strategy='epoch',
     load_best_model_at_end=True,
     metric_for_best_model='eval_loss',
@@ -125,7 +73,7 @@ training_args = TrainingArguments(
     lr_scheduler_type='linear',
     logging_dir='./logs',
     report_to="none",
-    fp16=True  # falls du eine GPU mit FP16-Unterstützung hast
+    fp16=torch.cuda.is_available()  # Mixed Precision nur mit GPU
 )
 
 # Trainer
@@ -134,7 +82,7 @@ trainer = Trainer(
     args=training_args,
     train_dataset=train_dataset,
     eval_dataset=test_dataset,
-    tokenizer=tokenizer,
+    processing_class=tokenizer,
     data_collator=data_collator,
     compute_metrics=compute_metrics,
     callbacks=[EarlyStoppingCallback(early_stopping_patience=2)]
@@ -142,3 +90,8 @@ trainer = Trainer(
 
 # Training starten
 trainer.train()
+
+# Bestes Modell + Klassen speichern, damit evaluate.py dieselbe Zuordnung nutzt
+output_dir = './author_classification2/best'
+trainer.save_model(output_dir)
+np.save(f'{output_dir}/classes.npy', label_encoder.classes_)

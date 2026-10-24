@@ -88,7 +88,7 @@ def tokenize_and_truncate(text, tokenizer, max_length=512):
 
 # 1. Verbindung zur Datenbank herstellen und Daten abrufen
 try:
-    engine = sqlalchemy.create_engine('mysql+mysqlconnector://root:1234@localhost/diplomarbeit')
+    engine = sqlalchemy.create_engine(os.getenv("DB_URL", "mysql+mysqlconnector://root@localhost/diplomarbeit"))
     query = """
     SELECT articles.content, COALESCE(authors.name, 'kein Autor') AS author
     FROM articles

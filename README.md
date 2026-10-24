@@ -1,49 +1,100 @@
-# diplomarbeit
-## What are LSTM and Transformers?
-### Transformer
-The Transformer Neural Network Architecture was initailly used to solve Neural Machine Translation.
-Here is a picture:![grafik](https://github.com/user-attachments/assets/ef25aeea-97dd-4143-8afd-6c809adefc14)
-The Transformer is
-* faster, because words are getting parsed seperatly
-* Deepy Bidirectional (the context of words is better learned as they will learn the context on both direction
-### LSTM
-And before that, LSTM Networks were used to solve the same problem:
-Here is the structure of this Network:![grafik](https://github.com/user-attachments/assets/cc1f21d4-80cb-416b-b875-3a9b38587178)
-This Network is 
-* slow, because they parsed the words sequently and are generated sequently. Due to this, this network consumes a lot of time to learn.
-* Not truly Bidirectional
-Even in this example: ![grafik](https://github.com/user-attachments/assets/7ac0f94a-b7c8-4a0f-8210-ba6e5bfc334d)
-The direction of the network just reads from left to right and right to left while concatenate each words, meaning you will lose some of the context.
-## Structure of Transformer
-The structure on the left: ![grafik](https://github.com/user-attachments/assets/9ade715a-3742-4e0f-a7c2-f88d40a239b4)
-is the Encoder and the structure on the right: ![grafik](https://github.com/user-attachments/assets/68d729e0-8a81-4bb4-95c4-db92ec3b9bd6) is the decoder
-## How does this work?
-The Encoder will take the words simultaneously and generates embedding for every word simultaneously. This Embeddings are vectors and contain the meanings of the word. the more similar the word is to eachother, the closer the number
-The Decoder will take the embeddings and the previously generated words of the french sentence (example) and uses that to generate the next word and it will generate the french translation one word at a time until the end.
-The **Encoder** learns:
-* What is English?
-* What is Grammar?
-* What is Context?
-The **Decoder** learns:
-* how does English words relate to French words?
-As you can see, both of the structures learn Language different and you can separate eachother:
-If you stack **Decoder**, you will get the GPT transformer architecture
-If you stack **Encoder**, you will get BERT (short for: Bidirectional Encoder Representation from Transformers)
-## BERT
-short for: Bidirectional Encoder Representation from Transformers, and you can use BERT to solve problems like:
-* Neural Machine Translation
-* Question Answering
-* Sentiment Analysis
-* Text summararization
-* etc.
-It needs to understand the Language to solve these problems and fine tune BERT to learn a specific task. The first part of BERT Traning is to pretrain the Model to let it understand the language and fine tune him.
-### Pretraining (Unsupervised Models)
-![grafik](https://github.com/user-attachments/assets/7fcae3d3-fa82-462f-9e34-5a8d74e4d657)
+# Tracing Linguistic Fingerprints: AI-Based Authorship Attribution
 
-#### Masked Languange Model
-A random sentence is filled with random Masks and it will try to output these masks
-#### Next Sentence Prediction
-Takes two sentences and determine, if the second sentence follows the first sentence
+Diplomarbeit an der HTL Hallein (Wirtschaftsingenieure – Betriebsinformatik), 2024/25, bewertet mit **Sehr gut**.
 
-# Okay im done
-Just watch the following video: https://www.youtube.com/watch?v=xI0HHN5XKDo
+Kann ein Sprachmodell erkennen, **wer** einen Zeitungsartikel geschrieben hat, nur anhand des Schreibstils?
+Dafür haben wir rund 200.000 Artikel von [derStandard.at](https://www.derstandard.at) gesammelt und ein deutsches BERT-Modell darauf trainiert, die Autorin oder den Autor eines Textes vorherzusagen.
+
+## Pipeline
+
+```
+derStandard-Sitemaps ──► Crawler (requests + BeautifulSoup)
+                              │
+                              ▼
+                         CSV-Export ──► MySQL (articles, authors, n:m-Zuordnung)
+                                              │
+              Apache Airflow: täglicher Lauf  │
+              (crawlen + in DB laden)         ▼
+                                     BERT-Fine-Tuning (bert-base-german-cased)
+                                              │
+                                              ▼
+                                Auswertung: Accuracy gesamt / pro Autor,
+                                Confusion Matrix, Accuracy vs. Artikelanzahl
+```
+
+## Ergebnisse
+
+| | |
+|---|---|
+| Modell | `bert-base-german-cased`, Fine-Tuning für Sequence Classification |
+| Daten | ~212.000 Artikel-Autor-Paare, nur Autor:innen mit ≥ 10 Artikeln |
+| Split | 80/20 pro Autor, auf Artikelebene (kein Artikel in Train **und** Test) |
+| Training | 3 Epochen, LR 5e-5, Batch 8, FP16 auf GPU, ca. 5,5 h |
+| **Test-Accuracy** | **65,1 %** (Epoche 1: 53,0 % → Epoche 2: 61,3 % → Epoche 3: 65,1 %) |
+
+Die wichtigste Erkenntnis: **Je mehr Artikel es von einer Person gibt, desto besser wird sie erkannt.** Ab etwa 1.000 Artikeln liegt die Accuracy pro Autor:in meistens bei 85–95 %, bei wenigen Artikeln schwankt sie stark.
+
+![Accuracy vs. Artikelanzahl](BERT/final_results/accuracy_vs_article_count.png)
+
+> **Hinweis zu den Zahlen:** Artikel auf derStandard enden oft mit einer Signatur wie „(Name, 21.8.2024)". Beim ursprünglichen Training war diese Signatur noch im Text, das Modell konnte den Namen also teilweise direkt ablesen. Die aktuelle Version von `BERT/data_utils.py` entfernt die Signatur. Die Grafiken in `BERT/final_results/` stammen noch aus dem alten Auswertungsskript, das über alle Artikel (inkl. Trainingsdaten) gerechnet hat. Mit `BERT/evaluate.py` werden sie jetzt nur auf dem Testset neu erzeugt.
+
+## Tech-Stack
+
+- **Python** (pandas, NumPy, scikit-learn)
+- **PyTorch** + **Hugging Face Transformers** (BERT, `Trainer`, Early Stopping, Mixed Precision)
+- **Web Scraping:** requests, BeautifulSoup, lxml (XML-Sitemaps)
+- **Datenbank:** MySQL, SQLAlchemy (ORM, n:m-Beziehung Artikel ↔ Autoren)
+- **Orchestrierung:** Apache Airflow (tägliche DAGs für Crawling und DB-Import)
+- **Visualisierung:** Matplotlib, Seaborn
+
+## Projektstruktur
+
+```
+├── crawler/              Crawler für derStandard (komplettes Archiv / nur heutige Artikel)
+├── database/
+│   ├── schema.sql        MySQL-Schema
+│   └── connection.py     CSV → MySQL Import
+├── db.py                 Import mit SQLAlchemy-ORM und Autoren-Erkennung ("A und B", "X aus Wien", …)
+├── airflow/
+│   ├── dags/             Airflow-DAGs (Crawling + Import, täglich)
+│   └── legacy_dags/      ältere DAG-Versionen
+├── BERT/
+│   ├── data_utils.py     Daten laden, Signatur entfernen, Train/Test-Split
+│   ├── train.py          Fine-Tuning des Modells
+│   ├── evaluate.py       Auswertung auf dem Testset + Grafiken
+│   ├── final_results/    Grafiken für die Diplomarbeit
+│   ├── notebooks/        Original-Notebooks mit Trainings-Output
+│   └── experiments/      frühere Versuche (Class Weights, Oversampling, Chunk-Vorhersage)
+└── docs/                 Notizen zu Transformer/BERT
+```
+
+## Selbst ausführen
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# MySQL-Datenbank anlegen
+mysql -u root -p < database/schema.sql
+
+# Zugangsdaten setzen (siehe .env.example)
+export DB_URL="mysql+mysqlconnector://root:PASSWORT@localhost:3306/diplomarbeit"
+
+# 1. Artikel crawlen und importieren
+python crawler/DerStandard_crawler.py
+python db.py
+
+# 2. Modell trainieren und auswerten (GPU empfohlen)
+cd BERT
+python train.py
+python evaluate.py
+```
+
+Die gecrawlten Artikel und das trainierte Modell sind nicht im Repo (Urheberrecht bzw. Dateigröße).
+
+## Mögliche Erweiterungen
+
+- Längere Artikel in mehrere 512-Token-Abschnitte teilen statt abzuschneiden (Ansatz in `BERT/experiments/improvised/predict.py`)
+- Neu trainieren ohne Signatur und Ergebnisse vergleichen
+- Vergleich mit klassischer Stilometrie (z. B. Character-n-Grams + Logistic Regression) als Baseline

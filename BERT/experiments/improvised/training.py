@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -8,7 +9,7 @@ import numpy as np
 import sqlalchemy
 
 # 1. Verbindung zur Datenbank herstellen und Daten abrufen
-engine = sqlalchemy.create_engine('mysql+mysqlconnector://root:1234@localhost/diplomarbeit')
+engine = sqlalchemy.create_engine(os.getenv("DB_URL", "mysql+mysqlconnector://root@localhost/diplomarbeit"))
 query = """
 SELECT articles.content, COALESCE(authors.name, 'kein Autor') AS author
 FROM articles
