@@ -67,7 +67,7 @@ else:
 print(f"Using CSV file: {csv_file}")
 
 # MySQL-Datenbankverbindung mit korrektem Port
-engine = create_engine('mysql+mysqlconnector://root:1234@localhost:33061/diplomarbeit')
+engine = create_engine(os.getenv("DB_URL", "mysql+mysqlconnector://root@localhost:33061/diplomarbeit"))
 
 # CSV-Datei laden
 try:

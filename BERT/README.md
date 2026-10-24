@@ -5,17 +5,15 @@ Dieses Projekt verwendet ein BERT-Modell (Bidirectional Encoder Representations 
 ## Funktionalitäten
 
 - **Textklassifikation**: Identifizierung von Autoren anhand ihrer Schreibstile und -muster
-- **Datenbalancierung**: Behandlung von Klassen-Ungleichgewichten durch Oversampling
-- **Gewichtete Loss-Funktion**: Berücksichtigung ungleicher Klassenverteilungen
-- **Batch-Verarbeitung**: Verarbeitung großer Textmengen und Aggregation der Ergebnisse
-- **Detaillierte Auswertung**: Visualisierung der Vorhersagen und Konfidenzwerte
+- **Sauberer Train/Test-Split**: pro Autor, auf Artikelebene, ohne Signatur im Text
+- **Auswertung**: Accuracy gesamt und pro Autor, normierte Confusion Matrix, Accuracy vs. Artikelanzahl
 
 ## Installation
 
 1. Klonen Sie das Repository:
    ```
-   git clone <repository-url>
-   cd BERT
+   git clone https://github.com/danielbelodev/diplomarbeit.git
+   cd diplomarbeit
    ```
 
 2. Erstellen Sie eine virtuelle Umgebung und installieren Sie die Abhängigkeiten:
@@ -25,72 +23,36 @@ Dieses Projekt verwendet ein BERT-Modell (Bidirectional Encoder Representations 
    pip install -r requirements.txt
    ```
 
-3. Stellen Sie sicher, dass Sie eine MySQL-Datenbank mit den erforderlichen Tabellen eingerichtet haben.
+3. MySQL-Datenbank mit `database/schema.sql` anlegen und `DB_URL` setzen (siehe `.env.example`).
 
 ## Verwendung
 
-### Training
-
-Um das Modell zu trainieren, führen Sie `improvements.py` aus:
-
 ```bash
-python improvements.py
+python train.py      # Fine-Tuning, speichert das beste Modell in ./author_classification2/best
+python evaluate.py   # Auswertung NUR auf dem Testset, erzeugt die Grafiken
 ```
 
-Dieser Prozess umfasst:
-- Laden der Daten aus der MySQL-Datenbank
-- Vorverarbeitung und Balancierung der Daten
-- Training eines BERT-Modells für die Autorenklassifikation
-- Speichern des trainierten Modells
+`data_utils.py` enthält die gemeinsame Datenaufbereitung, damit Training und Auswertung exakt denselben Split und dieselbe Autoren-Zuordnung verwenden:
+- nur Autor:innen mit mindestens 10 Artikeln
+- Autorensignatur „(Name, Datum)" am Artikelende wird entfernt
+- 80/20-Split pro Autor auf Artikelebene
 
-### Vorhersage
+Den Checkpoint für `evaluate.py` kann man mit `CHECKPOINT_PATH=... python evaluate.py` setzen.
 
-Um Vorhersagen mit dem trainierten Modell zu treffen, nutzen Sie `predict.py`:
-
-```bash
-python predict.py
-```
-
-Sie können auch die predict_author-Funktion für eigene Texte verwenden:
-
-```python
-from predict import predict_author
-
-text = "Ihr zu analysierender Text..."
-author, scores, confidence = predict_author(text)
-print(f"Vorhergesagter Autor: {author} (Konfidenz: {confidence:.3f})")
-```
-
-### GPU-Beschleunigung
-
-Das System verwendet automatisch CUDA, wenn verfügbar. Sie können die Verfügbarkeit mit `test.py` überprüfen:
-
-```bash
-python test.py
-```
+Frühere Versuche (Class Weights, Oversampling, Vorhersage über mehrere Text-Chunks) liegen in `experiments/`. Die Original-Notebooks mit dem kompletten Trainings-Output in `notebooks/`.
 
 ## Modellstruktur
 
 - **Basismodell**: bert-base-german-cased
-- **Anpassungen**: Gewichtete Loss-Funktion, Class-Balancing, Early Stopping
-- **Tokenisierung**: Verbesserte Tokenisierung mit Beachtung von Satzgrenzen
-- **Textvorverarbeitung**: Bereinigung von HTML, URLs und Sonderzeichen
-
-## Erweiterungen und Verbesserungen
-
-Die aktuelle Version enthält bereits viele Verbesserungen:
-
-- **Text Preprocessing**: Bessere Textbereinigung und Tokenisierung
-- **Klassengewichtung**: Berücksichtigung ungleicher Klassenverteilungen
-- **Early Stopping**: Vermeidung von Überanpassung
-- **Gradientenakkumulation**: Ermöglicht effektiv größere Batch-Größen
-- **Visualisierung**: Detaillierte Auswertung und Visualisierung der Ergebnisse
+- **Finale Version (`train.py`)**: Standard-Cross-Entropy, Early Stopping, Mixed Precision, max. 512 Token
+- **Experimente**: gewichtete Loss-Funktion, Oversampling, Tokenisierung an Satzgrenzen
 
 ## Fehlerbehebung
 
 Probleme mit CUDA? Überprüfen Sie:
 - PyTorch-Installation mit CUDA-Unterstützung
 - Kompatibilität der CUDA-Version
+- Test: `python experiments/original/test.py`
 
 Probleme mit der Datenbank? Überprüfen Sie:
 - MySQL-Server läuft

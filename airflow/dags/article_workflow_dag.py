@@ -8,7 +8,7 @@ import pandas as pd
 from typing import List, Tuple, Set
 
 # Add the project directory to Python path
-project_dir = os.path.expanduser('~/schule/diplomarbeit')
+project_dir = os.getenv('PROJECT_DIR', os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 if project_dir not in sys.path:
     sys.path.append(project_dir)
 
@@ -268,7 +268,7 @@ def filter_new_articles(**context):
     df['lastmod'] = pd.to_datetime(df['lastmod'])
     
     # Connect to database
-    engine = create_engine('mysql+mysqlconnector://root:1234@localhost:33061/diplomarbeit')
+    engine = create_engine(os.getenv("DB_URL", "mysql+mysqlconnector://root@localhost:33061/diplomarbeit"))
     
     with engine.connect() as connection:
         # Get the last inserted URL
@@ -310,7 +310,7 @@ def process_authors(**context):
         return "No authors to process"
     
     # Connect to database
-    engine = create_engine('mysql+mysqlconnector://root:1234@localhost:33061/diplomarbeit')
+    engine = create_engine(os.getenv("DB_URL", "mysql+mysqlconnector://root@localhost:33061/diplomarbeit"))
     
     author_ids = {}
     
@@ -359,7 +359,7 @@ def insert_articles(**context):
     df['lastmod'] = pd.to_datetime(df['lastmod'])
     
     # Connect to database
-    engine = create_engine('mysql+mysqlconnector://root:1234@localhost:33061/diplomarbeit')
+    engine = create_engine(os.getenv("DB_URL", "mysql+mysqlconnector://root@localhost:33061/diplomarbeit"))
     
     inserted_count = 0
     

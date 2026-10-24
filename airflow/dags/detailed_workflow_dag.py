@@ -75,7 +75,7 @@ def check_existing_urls(**context):
         conn = mysql.connector.connect(
             host="localhost",
             user="root",
-            password="1234",
+            password=os.getenv("DB_PASSWORD", ""),
             database="diplomarbeit",
             port=33061
         )
@@ -162,7 +162,7 @@ def run_database_import(**context):
         conn = mysql.connector.connect(
             host="localhost",
             user="root",
-            password="1234",
+            password=os.getenv("DB_PASSWORD", ""),
             database="diplomarbeit",
             port=33061
         )

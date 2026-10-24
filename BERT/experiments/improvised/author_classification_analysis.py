@@ -43,7 +43,7 @@ def fetch_data_from_mysql(min_articles_per_author=2):
     try:
         # Datenbankverbindung mit explizitem Host und Port
         engine = sqlalchemy.create_engine(
-            'mysql+mysqlconnector://root:1234@127.0.0.1:3306/diplomarbeit',
+            os.getenv("DB_URL", "mysql+mysqlconnector://root@127.0.0.1:3306/diplomarbeit"),
             connect_args={'use_pure': True}  # Use pure Python implementation
         )
         
@@ -57,7 +57,7 @@ def fetch_data_from_mysql(min_articles_per_author=2):
             logger.error("1. MySQL server is running (sudo service mysql status)")
             logger.error("2. MySQL is accepting connections on 127.0.0.1:3306")
             logger.error("3. User 'root' has correct permissions")
-            logger.error("4. Password '1234' is correct")
+            logger.error("4. DB_URL (Umgebungsvariable) enthält die richtigen Zugangsdaten")
             logger.error("5. Database 'diplomarbeit' exists")
             raise
         

@@ -1,39 +1,18 @@
+import os
 import pandas as pd
-import sqlalchemy
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer, BertForSequenceClassification
-from sklearn.preprocessing import LabelEncoder
+from data_utils import load_articles, split_by_author
 from tqdm import tqdm
-from torch.cuda.amp import autocast
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import confusion_matrix, accuracy_score
+from sklearn.metrics import confusion_matrix
 import numpy as np
 
-# Datenbankverbindung
-engine = sqlalchemy.create_engine('mysql+mysqlconnector://root:1234@localhost/diplomarbeit')
-
-# Artikel und Autoren auslesen
-query = """
-SELECT a.id as article_id, a.content, auth.name as author
-FROM articles a
-JOIN placeholder p ON a.id = p.article_id
-JOIN authors auth ON p.author_id = auth.id
-"""
-df = pd.read_sql(query, engine)
-df = df[df['author'] != 'kein Autor']
-
-# Nur Autoren mit ≥10 Artikeln
-author_counts = df['author'].value_counts()
-authors_filtered = author_counts[author_counts >= 10].index
-df = df[df['author'].isin(authors_filtered)]
-
-
-# Label Encoding
-label_encoder = LabelEncoder()
-df['author_id'] = label_encoder.fit_transform(df['author'])
+# Gleiche Daten + gleicher Split wie in train.py -> ausgewertet wird NUR das Testset
+df_all = load_articles()
+_, df, label_encoder = split_by_author(df_all)
 
 # Dataset vorbereiten
 class TextDataset(Dataset):
@@ -61,7 +40,7 @@ class TextDataset(Dataset):
         }
     
 # Tokenizer & Modell laden
-checkpoint_path = "./author_classification2/checkpoint-61620"
+checkpoint_path = os.getenv("CHECKPOINT_PATH", "./author_classification2/checkpoint-61620")
 model = BertForSequenceClassification.from_pretrained(checkpoint_path)
 tokenizer = BertTokenizer.from_pretrained(checkpoint_path)
 
@@ -81,7 +60,7 @@ with torch.no_grad():
         attention_mask = batch['attention_mask'].to(device)
         labels = batch['labels'].to(device)
 
-        with autocast():  # Optional: Mixed Precision (wenn CUDA)
+        with torch.autocast(device_type=device.type, enabled=device.type == 'cuda'):  # Mixed Precision nur mit GPU
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             preds = torch.argmax(outputs.logits, axis=1)
 
@@ -98,7 +77,7 @@ accuracy_per_author = df.groupby('author_id').agg(
     article_count=('article_id', 'count')
 ).reset_index()
 
-acc_per_author = df.groupby('author_id').apply(lambda x: accuracy_score(x['author_id'], x['predicted']))
+acc_per_author = df.groupby('author_id')['correct'].mean()
 article_count = df.groupby('author_id').size()
 
 
@@ -123,10 +102,12 @@ plt.tight_layout()
 plt.savefig("accuracy_vs_article_count.png", dpi=300)
 plt.show()
 
-# 2. Plot: Confusion Matrix für Autoren mit ≥700 Artikeln
+# 2. Plot: Confusion Matrix für die Autoren mit den meisten Testartikeln
+# ≥140 Testartikel entspricht ca. ≥700 Artikeln insgesamt (20 % Testanteil)
+MIN_TEST_ARTICLES = 140
 author_counts = df['author_id'].value_counts()
-valid_authors = author_counts[author_counts >= 700].index
-df_filtered = df[df['author_id'].isin(valid_authors)]
+valid_authors = author_counts[author_counts >= MIN_TEST_ARTICLES].index
+df_filtered = df[df['author_id'].isin(valid_authors)].copy()
 
 # Encoding der Autoren
 unique_authors = sorted(df_filtered['author_id'].unique())
@@ -161,37 +142,35 @@ plt.xlabel("Vorhergesagter Autor", fontsize=10)
 plt.ylabel("Tatsächlicher Autor", fontsize=10)
 plt.xticks(rotation=90, fontsize=6)
 plt.yticks(rotation=0, fontsize=6)
-plt.title("Normierte Confusion Matrix (Autoren ≥ 700 Artikel)", fontsize=12)
+plt.title(f"Normierte Confusion Matrix (Autoren ≥ {MIN_TEST_ARTICLES} Testartikel)", fontsize=12)
 plt.tight_layout()
 plt.savefig("normalized_confusion_matrix.png", dpi=300)
 plt.show()
 
-# Autoren-Tabelle laden
-authors_df = pd.read_sql("SELECT id, name FROM authors", con=engine)
-
-# Autoren mit ≥700 Artikeln
+# Autoren mit ≥MIN_TEST_ARTICLES Testartikeln
 author_counts = df['author_id'].value_counts()
-valid_authors = author_counts[author_counts >= 700].index
+valid_authors = author_counts[author_counts >= MIN_TEST_ARTICLES].index
 df_filtered = df[df['author_id'].isin(valid_authors)].copy()
 
 # Accuracy je Autor
 accuracy_per_author = (
-    df_filtered.groupby('author_id')
-    .apply(lambda x: accuracy_score(x['author_id'], x['predicted']))
+    df_filtered.groupby('author_id')['correct']
+    .mean()
     .reset_index(name='accuracy')
 )
 
-# Namen dazujoinen
-accuracy_with_names = accuracy_per_author.merge(authors_df, left_on='author_id', right_on='id')
+# Namen über den LabelEncoder holen: author_id ist der Klassen-Index des Modells, NICHT authors.id aus der DB
+accuracy_with_names = accuracy_per_author.copy()
+accuracy_with_names['name'] = label_encoder.inverse_transform(accuracy_with_names['author_id'])
 accuracy_with_names = accuracy_with_names.sort_values("name")
+
+print(f"Test-Accuracy gesamt: {df['correct'].mean():.3f} ({len(df)} Testartikel, {df['author_id'].nunique()} Autoren)")
 
 # Dynamische Schriftgröße
 num_authors = len(accuracy_with_names)
 fontsize = 8 if num_authors > 80 else 7 if num_authors > 40 else 9
 
 # Plot
-import matplotlib.pyplot as plt
-
 plt.figure(figsize=(16, 6))
 plt.bar(accuracy_with_names['name'], accuracy_with_names['accuracy'], color="mediumseagreen")
 plt.xticks(rotation=90, fontsize=fontsize)
@@ -199,7 +178,7 @@ plt.yticks(fontsize=8)
 plt.ylim(0, 1.05)
 plt.xlabel("Autor", fontsize=10)
 plt.ylabel("Accuracy", fontsize=10)
-plt.title("Accuracy pro Autor (≥ 700 Artikel)", fontsize=12)
+plt.title(f"Accuracy pro Autor (≥ {MIN_TEST_ARTICLES} Testartikel)", fontsize=12)
 plt.grid(axis='y', linestyle='--', alpha=0.5)
 plt.tight_layout()
 plt.savefig("accuracy_per_author_named_barchart.png", dpi=300)

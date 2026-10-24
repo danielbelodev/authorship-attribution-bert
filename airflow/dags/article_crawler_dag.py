@@ -6,8 +6,9 @@ import sys
 import subprocess
 
 # Define the absolute paths to the scripts
-CRAWLER_SCRIPT = os.path.expanduser('~/schule/diplomarbeit/crawler/DerStandard_crawler_today.py')
-CONNECTION_SCRIPT = os.path.expanduser('~/schule/diplomarbeit/database/connection.py')
+PROJECT_DIR = os.getenv('PROJECT_DIR', os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+CRAWLER_SCRIPT = os.path.join(PROJECT_DIR, 'crawler', 'DerStandard_crawler_today.py')
+CONNECTION_SCRIPT = os.path.join(PROJECT_DIR, 'database', 'connection.py')
 
 # Default arguments for the DAG
 default_args = {

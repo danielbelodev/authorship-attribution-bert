@@ -1,14 +1,35 @@
-Virtual_Environments/*
-BERT/bert_author_model_german
-BERT/results
-airflow_env_new
-airflow_home/logs/*
-airflow_home
-airflow/logs/*
-BERT/author_classification2
-articles_2025-03-25.csv
-ks.csv
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+Virtual_Environments/
+airflow_env_new/
 
+# Secrets / lokale Konfiguration
+.env
 
+# Modelle & Trainingsergebnisse (zu groß für Git)
+BERT/bert_author_model_german/
+BERT/author_classification2/
+BERT/results/
+BERT/logs/
+*.safetensors
+*.bin
+*.pt
 
+# Airflow-Laufzeitdateien (werden lokal von Airflow erzeugt)
+airflow_home/
+airflow/logs/
+airflow/airflow.cfg
+airflow/airflow.db
+airflow/*.pid
+airflow/webserver_config.py
 
+# Gecrawlte Daten (Urheberrecht der Artikel liegt bei derStandard)
+*.csv
+!BERT/author_encoding_mapping.csv
+!BERT/author_id_mapping_filtered.csv
+*.log

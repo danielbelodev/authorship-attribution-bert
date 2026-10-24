@@ -1,9 +1,0 @@
-2025-03-23 16:40:29,686 - predict - INFO - Using device: cuda
-2025-03-23 16:40:29,686 - __main__ - INFO - Using device: cuda
-2025-03-23 16:40:29,686 - __main__ - INFO - Lade Daten aus MySQL...
-2025-03-23 16:40:29,797 - __main__ - ERROR - Fehler beim Datenbankzugriff: 'Engine' object has no attribute 'cursor'
-2025-03-23 16:43:00,959 - predict - INFO - Using device: cuda
-2025-03-23 16:43:00,960 - __main__ - INFO - Using device: cuda
-2025-03-23 16:43:00,960 - __main__ - INFO - Lade Daten aus MySQL...
-2025-03-23 16:42:58,846 - __main__ - ERROR - Fehler beim Datenbankzugriff: (mysql.connector.errors.InterfaceError) 2002: Can't connect to local MySQL server through socket '%-.100s' (%s) (Warning: not all arguments converted during string formatting)
-(Background on this error at: https://sqlalche.me/e/14/rvf5)

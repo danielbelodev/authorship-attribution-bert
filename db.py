@@ -1,3 +1,4 @@
+import os
 import csv
 import re
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, Table
@@ -110,7 +111,7 @@ def extract_authors(author_text):
 
 def main():
     # Korrekt formatierte Datenbank-URL für SQLAlchemy
-    DATABASE_URL = "mysql+pymysql://root:1234@localhost/test"
+    DATABASE_URL = os.getenv("DB_URL", "mysql+mysqlconnector://root@localhost/diplomarbeit")
     
     # CSV-Dateiname
     csv_filename = 'ks.csv'

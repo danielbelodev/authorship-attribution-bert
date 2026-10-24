@@ -1,4 +1,22 @@
-pandas>=2.2.3
-beautifulsoup4>=4.13.3
-requests>=2.32.3
-mysql-connector-python>=9.2.0 
+# Crawler & Datenbank
+requests>=2.32
+beautifulsoup4>=4.13
+lxml>=5.0
+pandas>=2.2
+sqlalchemy>=2.0
+mysql-connector-python>=9.2
+python-dateutil>=2.9
+
+# Modell (BERT)
+torch>=2.2
+transformers>=4.46
+scikit-learn>=1.4
+numpy>=1.26
+nltk>=3.8
+
+# Auswertung & Plots
+matplotlib>=3.8
+seaborn>=0.13
+tqdm>=4.66
+
+# Airflow wird separat installiert (siehe airflow/README.md)
